@@ -18,6 +18,13 @@ struct TouchMessage: Codable {
 // MARK: - Gesture Recognition + Event Injection
 
 class GestureEngine {
+    var debugSend: ((String) -> Void)?
+
+    func debug(_ msg: String) {
+        print("  \(msg)")
+        debugSend?(msg)
+    }
+
     struct TouchState {
         var x: Float
         var y: Float
@@ -42,6 +49,10 @@ class GestureEngine {
     var lastTapTime: Date?
     var isDragging = false
     let doubleTapWindow: TimeInterval = 0.3
+
+    // Three-finger swipe
+    var threeFingerTriggered = false
+    let threeFingerSwipeThreshold: Float = 0.05
 
     // Tuning — sensX/sensY adjustable from phone
     var sensX: CGFloat = 1.0
@@ -84,7 +95,7 @@ class GestureEngine {
                     down?.post(tap: .cghidEventTap)
                     isDragging = true
                     lastTapTime = nil
-                    print("  → drag started")
+                    debug("drag started")
                 }
             }
             activeTouches[touch.id] = TouchState(
@@ -142,6 +153,33 @@ class GestureEngine {
                     scrollVelocityY = scrollVelocityY * 0.3 + sy * 0.7
                     wasScrolling = true
                     stopMomentum()
+                } else if fingerCount == 3 && !threeFingerTriggered {
+                    // Check displacement from start for any active touch
+                    for (_, state) in activeTouches {
+                        let dispX = state.x - state.startX
+                        let dispY = state.y - state.startY
+                        if abs(dispX) > threeFingerSwipeThreshold || abs(dispY) > threeFingerSwipeThreshold {
+                            if abs(dispY) > abs(dispX) {
+                                if dispY < 0 {
+                                    triggerMissionControl()
+                                    debug("3f ↑ Mission Control")
+                                } else {
+                                    triggerMissionControl()
+                                    debug("3f ↓ Mission Control")
+                                }
+                            } else {
+                                if dispX < 0 {
+                                    triggerSwitchDesktop(right: true)
+                                    debug("3f → next desktop")
+                                } else {
+                                    triggerSwitchDesktop(right: false)
+                                    debug("3f ← prev desktop")
+                                }
+                            }
+                            threeFingerTriggered = true
+                            break
+                        }
+                    }
                 }
             }
         }
@@ -166,7 +204,7 @@ class GestureEngine {
                                 mouseCursorPosition: pos, mouseButton: .left)
                 up?.post(tap: .cghidEventTap)
                 isDragging = false
-                print("  → drag ended")
+                debug("drag ended")
             } else if duration < tapMaxDuration && maxDisplacement < tapMaxDisplacement {
                 if maxConcurrentTouches == 1 {
                     click()
@@ -178,6 +216,7 @@ class GestureEngine {
                 startMomentum()
             }
             wasScrolling = false
+            threeFingerTriggered = false
             touchSequenceStart = nil
         }
     }
@@ -212,7 +251,7 @@ class GestureEngine {
         let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp,
                         mouseCursorPosition: pos, mouseButton: .left)
         up?.post(tap: .cghidEventTap)
-        print("  → tap (click)")
+        debug("tap (click)")
     }
 
     func rightClick() {
@@ -223,7 +262,33 @@ class GestureEngine {
         let up = CGEvent(mouseEventSource: nil, mouseType: .rightMouseUp,
                         mouseCursorPosition: pos, mouseButton: .right)
         up?.post(tap: .cghidEventTap)
-        print("  → two-finger tap (right click)")
+        debug("2f tap (right click)")
+    }
+
+    func simulateKey(_ keyCode: CGKeyCode, control: Bool = false) {
+        let down = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: true)
+        let up = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: false)
+        if control {
+            down?.flags = .maskControl
+            up?.flags = .maskControl
+        }
+        down?.post(tap: .cghidEventTap)
+        up?.post(tap: .cghidEventTap)
+    }
+
+    func triggerMissionControl() {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        task.arguments = ["-e", "tell application \"System Events\" to key code 126 using control down"]
+        try? task.run()
+    }
+
+    func triggerSwitchDesktop(right: Bool) {
+        let keyCode = right ? 124 : 123
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        task.arguments = ["-e", "tell application \"System Events\" to key code \(keyCode) using control down"]
+        try? task.run()
     }
 
     func stopMomentum() {
@@ -281,6 +346,16 @@ class PhoneConnection {
     init(host: String = "127.0.0.1", port: UInt16 = 8765) {
         self.host = host
         self.port = port
+        engine.debugSend = { [weak self] msg in
+            self?.sendDebug(msg)
+        }
+    }
+
+    func sendDebug(_ msg: String) {
+        guard let connection else { return }
+        let json = "{\"type\":\"debug\",\"msg\":\"\(msg)\"}\n"
+        let data = json.data(using: .utf8)!
+        connection.send(content: data, completion: .contentProcessed { _ in })
     }
 
     func start() {

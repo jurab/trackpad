@@ -93,10 +93,20 @@ class RawTouchView: UIView {
 
 struct TrackpadSurface: UIViewRepresentable {
     let sender: TouchSender
+    let log = DebugLog.shared
 
     func makeUIView(context: Context) -> RawTouchView {
         let view = RawTouchView()
         view.onTouchEvent = { touches in
+            let fingers = touches.filter { $0.phase == "began" || $0.phase == "moved" }.count
+            let began = touches.filter { $0.phase == "began" }.count
+            if began > 0 {
+                log.phone("\(fingers)f down")
+            }
+            let ended = touches.filter { $0.phase == "ended" || $0.phase == "cancelled" }
+            if !ended.isEmpty && ended.count == touches.count {
+                log.phone("all up")
+            }
             sender.send(touches: touches)
         }
         return view
@@ -110,13 +120,20 @@ struct TrackpadSurface: UIViewRepresentable {
 struct TrackpadView: View {
     @StateObject private var sender = TouchSender()
     @ObservedObject private var lockState = LockState.shared
+    @ObservedObject private var debugLog = DebugLog.shared
     @State private var showSettings = false
+    @State private var showDebug = true
     @AppStorage("sensX") private var sensX: Double = 1.0
     @AppStorage("sensY") private var sensY: Double = 1.0
 
     var body: some View {
         ZStack {
             TrackpadSurface(sender: sender)
+
+            if showDebug {
+                DebugHUD(macLines: debugLog.macLines, phoneLines: debugLog.phoneLines)
+                    .allowsHitTesting(false)
+            }
 
             VStack {
                 HStack {
@@ -135,6 +152,15 @@ struct TrackpadView: View {
                         Image(systemName: lockState.isLocked ? "lock.fill" : "lock.open")
                             .font(.system(size: 16))
                             .foregroundColor(lockState.isLocked ? .white : .white.opacity(0.5))
+                            .frame(width: 44, height: 44)
+                    }
+
+                    Button {
+                        showDebug.toggle()
+                    } label: {
+                        Image(systemName: "terminal")
+                            .font(.system(size: 16))
+                            .foregroundColor(showDebug ? .white : .white.opacity(0.5))
                             .frame(width: 44, height: 44)
                     }
 
@@ -229,5 +255,45 @@ struct SettingsOverlay: View {
                 .shadow(radius: 20)
         )
         .frame(maxWidth: 320)
+    }
+}
+
+// MARK: - Debug HUD
+
+struct DebugHUD: View {
+    let macLines: [LogEntry]
+    let phoneLines: [LogEntry]
+
+    var body: some View {
+        VStack {
+            Spacer()
+            HStack(alignment: .bottom, spacing: 16) {
+                LogColumn(title: "MAC", lines: macLines, color: .cyan)
+                LogColumn(title: "PHONE", lines: phoneLines, color: .green)
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 24)
+        }
+    }
+}
+
+struct LogColumn: View {
+    let title: String
+    let lines: [LogEntry]
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .foregroundColor(color.opacity(0.6))
+            ForEach(lines.suffix(12)) { entry in
+                Text(entry.text)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(color.opacity(0.5))
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

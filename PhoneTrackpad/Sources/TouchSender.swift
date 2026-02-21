@@ -2,14 +2,43 @@ import UIKit
 import Network
 import Combine
 
+struct LogEntry: Identifiable {
+    let id = UUID()
+    let text: String
+    let time = Date()
+}
+
+class DebugLog: ObservableObject {
+    static let shared = DebugLog()
+    @Published var macLines: [LogEntry] = []
+    @Published var phoneLines: [LogEntry] = []
+    let maxLines = 20
+
+    func mac(_ msg: String) {
+        DispatchQueue.main.async {
+            self.macLines.append(LogEntry(text: msg))
+            if self.macLines.count > self.maxLines { self.macLines.removeFirst() }
+        }
+    }
+
+    func phone(_ msg: String) {
+        DispatchQueue.main.async {
+            self.phoneLines.append(LogEntry(text: msg))
+            if self.phoneLines.count > self.maxLines { self.phoneLines.removeFirst() }
+        }
+    }
+}
+
 class TouchSender: ObservableObject {
     @Published var isConnected = false
     let port: UInt16 = 8765
+    let log = DebugLog.shared
 
     private var listener: NWListener?
     private var connection: NWConnection?
     private let encoder = JSONEncoder()
     private let queue = DispatchQueue(label: "touchsender", qos: .userInteractive)
+    private var recvBuffer = Data()
 
     init() {
         startListener()
@@ -83,10 +112,13 @@ class TouchSender: ObservableObject {
                 case .ready:
                     self?.isConnected = true
                     self?.sendHello()
+                    self?.startReceiving()
+                    self?.log.phone("Mac connected")
                     print("[Conn] Mac connected!")
                 case .failed, .cancelled:
                     self?.isConnected = false
                     self?.connection = nil
+                    self?.log.phone("Mac disconnected")
                     print("[Conn] Mac disconnected")
                 default:
                     break
@@ -132,5 +164,34 @@ class TouchSender: ObservableObject {
                 print("[Send] settings error: \(error)")
             }
         })
+    }
+
+    // MARK: - Receive debug messages from Mac
+
+    private func startReceiving() {
+        connection?.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
+            guard let self else { return }
+            if let data {
+                self.recvBuffer.append(data)
+                self.processRecvBuffer()
+            }
+            if !isComplete && error == nil {
+                self.startReceiving()
+            }
+        }
+    }
+
+    private func processRecvBuffer() {
+        while let newlineIndex = recvBuffer.firstIndex(of: 0x0A) {
+            let lineData = recvBuffer[recvBuffer.startIndex..<newlineIndex]
+            recvBuffer = Data(recvBuffer[recvBuffer.index(after: newlineIndex)...])
+            guard !lineData.isEmpty else { continue }
+
+            if let obj = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+               let type = obj["type"] as? String, type == "debug",
+               let msg = obj["msg"] as? String {
+                log.mac(msg)
+            }
+        }
     }
 }
