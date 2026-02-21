@@ -54,6 +54,10 @@ class GestureEngine {
     var threeFingerTriggered = false
     let threeFingerSwipeThreshold: Float = 0.05
 
+    // Movement ramp-up (dampens initial jitter on finger placement)
+    var moveFrameCount = 0
+    let rampFrames = 5
+
     // Tuning — sensX/sensY adjustable from phone
     var sensX: CGFloat = 1.0
     var sensY: CGFloat = 1.0
@@ -82,6 +86,7 @@ class GestureEngine {
                 maxConcurrentTouches = 0
                 touchSequenceStart = Date()
                 maxDisplacement = 0
+                moveFrameCount = 0
                 stopMomentum()
                 scrollVelocityX = 0
                 scrollVelocityY = 0
@@ -126,6 +131,7 @@ class GestureEngine {
             }
 
             if moveCount > 0 {
+                moveFrameCount += 1
                 let avgDX = CGFloat(totalDX) / CGFloat(moveCount)
                 let avgDY = CGFloat(totalDY) / CGFloat(moveCount)
 
@@ -134,8 +140,11 @@ class GestureEngine {
                 let scaledDY = avgDY * sensY
                 let magnitude = sqrt(scaledDX * scaledDX + scaledDY * scaledDY)
                 let accel = 1.0 + magnitude * 8.0
-                let dx = scaledDX * baseSensitivity * accel
-                let dy = scaledDY * baseSensitivity * accel
+                let ramp = moveFrameCount <= rampFrames
+                    ? CGFloat(moveFrameCount) / CGFloat(rampFrames)
+                    : 1.0
+                let dx = scaledDX * baseSensitivity * accel * ramp
+                let dy = scaledDY * baseSensitivity * accel * ramp
 
                 let fingerCount = activeTouches.count
                 if fingerCount == 1 {
