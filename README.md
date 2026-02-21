@@ -50,6 +50,7 @@ Grant Accessibility permissions to your terminal when prompted.
 
 - **1-finger drag** → cursor movement (with acceleration)
 - **1-finger tap** → left click
+- **Double-tap and drag** → click-hold-move (for dragging windows, selecting text, etc.)
 - **2-finger tap** → right click
 - **2-finger drag** → scroll (natural direction, with momentum)
 - **X/Y sensitivity sliders** — settings panel on phone, values sent to Mac in real-time
