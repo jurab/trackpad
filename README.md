@@ -50,6 +50,7 @@ Grant Accessibility permissions to your terminal when prompted.
 
 - **1-finger drag** → cursor movement (with acceleration)
 - **1-finger tap** → left click
+- **1-finger double-tap** → double-click (opens files/folders)
 - **Double-tap and drag** → click-hold-move (for dragging windows, selecting text, etc.)
 - **2-finger tap** → right click
 - **2-finger drag** → scroll (natural direction, with momentum)
@@ -58,7 +59,7 @@ Grant Accessibility permissions to your terminal when prompted.
 - **X/Y sensitivity sliders** — settings panel on phone, values sent to Mac in real-time
 - **Debug HUD** — two-column live log (Mac/Phone) on the touch surface, toggle with terminal icon
 - **Lock mode** — defers iOS edge gestures so swipes don't trigger Control Center / notifications
-- **Landscape support** — rotate for a wider surface
+- **Landscape by default** — launches in landscape for a wider surface
 - **Auto-reconnect** — survives app switching and cable reconnection
 
 ## Project structure

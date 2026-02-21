@@ -14,6 +14,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(
         _ application: UIApplication,
+        supportedInterfaceOrientationsFor window: UIWindow?
+    ) -> UIInterfaceOrientationMask {
+        .allButUpsideDown
+    }
+
+    func application(
+        _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
         // Wrap the hosting controller in a container that controls edge gestures
@@ -36,6 +43,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         window?.rootViewController = container
         window?.makeKeyAndVisible()
         application.isIdleTimerDisabled = true
+
+        // Request landscape on launch
+        DispatchQueue.main.async { [weak self] in
+            if let scene = self?.window?.windowScene {
+                let prefs = UIWindowScene.GeometryPreferences.iOS(interfaceOrientations: .landscapeRight)
+                scene.requestGeometryUpdate(prefs) { _ in }
+            }
+        }
+
         return true
     }
 }
@@ -65,6 +81,14 @@ class EdgeLockContainerController: UIViewController {
     }
 
     override var prefersStatusBarHidden: Bool { true }
+
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
+        .allButUpsideDown
+    }
+
+    override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation {
+        .landscapeRight
+    }
 
     // Tell the system THIS controller handles edge deferring, not a child
     override var childForScreenEdgesDeferringSystemGestures: UIViewController? { nil }

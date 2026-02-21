@@ -19,7 +19,6 @@ struct TouchMessage: Codable {
 
 class GestureEngine {
     var debugSend: ((String) -> Void)?
-
     func debug(_ msg: String) {
         print("  \(msg)")
         debugSend?(msg)
@@ -45,10 +44,12 @@ class GestureEngine {
     let momentumMinVelocity: CGFloat = 0.5
     var wasScrolling = false
 
-    // Double-tap drag
+    // Double-tap drag / double-click
     var lastTapTime: Date?
     var isDragging = false
+    var pendingDoubleTap = false
     let doubleTapWindow: TimeInterval = 0.3
+    let dragDisplacementThreshold: Float = 0.008
 
     // Three-finger swipe
     var threeFingerTriggered = false
@@ -91,16 +92,11 @@ class GestureEngine {
                 scrollVelocityX = 0
                 scrollVelocityY = 0
 
-                // Double-tap drag: second touch within window → mouseDown
+                // Double-tap: defer decision until we see movement (→ drag) or lift (→ double-click)
                 if let lastTap = lastTapTime,
                    Date().timeIntervalSince(lastTap) < doubleTapWindow {
-                    let pos = currentCursorPos()
-                    let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown,
-                                      mouseCursorPosition: pos, mouseButton: .left)
-                    down?.post(tap: .cghidEventTap)
-                    isDragging = true
+                    pendingDoubleTap = true
                     lastTapTime = nil
-                    debug("drag started")
                 }
             }
             activeTouches[touch.id] = TouchState(
@@ -148,9 +144,19 @@ class GestureEngine {
 
                 let fingerCount = activeTouches.count
                 if fingerCount == 1 {
+                    if pendingDoubleTap && !isDragging && maxDisplacement > dragDisplacementThreshold {
+                        // Finger moved enough — commit to drag
+                        let pos = currentCursorPos()
+                        let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown,
+                                          mouseCursorPosition: pos, mouseButton: .left)
+                        down?.post(tap: .cghidEventTap)
+                        isDragging = true
+                        pendingDoubleTap = false
+                        debug("drag started")
+                    }
                     if isDragging {
                         dragCursor(dx: dx, dy: dy)
-                    } else {
+                    } else if !pendingDoubleTap {
                         moveCursor(dx: dx, dy: dy)
                     }
                 } else if fingerCount == 2 {
@@ -213,7 +219,12 @@ class GestureEngine {
                                 mouseCursorPosition: pos, mouseButton: .left)
                 up?.post(tap: .cghidEventTap)
                 isDragging = false
+                pendingDoubleTap = false
                 debug("drag ended")
+            } else if pendingDoubleTap {
+                // Second tap lifted without moving — double-click
+                doubleClick()
+                pendingDoubleTap = false
             } else if duration < tapMaxDuration && maxDisplacement < tapMaxDisplacement {
                 if maxConcurrentTouches == 1 {
                     click()
@@ -261,6 +272,21 @@ class GestureEngine {
                         mouseCursorPosition: pos, mouseButton: .left)
         up?.post(tap: .cghidEventTap)
         debug("tap (click)")
+    }
+
+    func doubleClick() {
+        let pos = currentCursorPos()
+        for _ in 0..<2 {
+            let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown,
+                              mouseCursorPosition: pos, mouseButton: .left)
+            down?.setIntegerValueField(.mouseEventClickState, value: 2)
+            down?.post(tap: .cghidEventTap)
+            let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp,
+                            mouseCursorPosition: pos, mouseButton: .left)
+            up?.setIntegerValueField(.mouseEventClickState, value: 2)
+            up?.post(tap: .cghidEventTap)
+        }
+        debug("double-click")
     }
 
     func rightClick() {
