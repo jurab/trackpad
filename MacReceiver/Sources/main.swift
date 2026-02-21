@@ -38,6 +38,11 @@ class GestureEngine {
     let momentumMinVelocity: CGFloat = 0.5
     var wasScrolling = false
 
+    // Double-tap drag
+    var lastTapTime: Date?
+    var isDragging = false
+    let doubleTapWindow: TimeInterval = 0.3
+
     // Tuning — sensX/sensY adjustable from phone
     var sensX: CGFloat = 1.0
     var sensY: CGFloat = 1.0
@@ -69,6 +74,18 @@ class GestureEngine {
                 stopMomentum()
                 scrollVelocityX = 0
                 scrollVelocityY = 0
+
+                // Double-tap drag: second touch within window → mouseDown
+                if let lastTap = lastTapTime,
+                   Date().timeIntervalSince(lastTap) < doubleTapWindow {
+                    let pos = currentCursorPos()
+                    let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown,
+                                      mouseCursorPosition: pos, mouseButton: .left)
+                    down?.post(tap: .cghidEventTap)
+                    isDragging = true
+                    lastTapTime = nil
+                    print("  → drag started")
+                }
             }
             activeTouches[touch.id] = TouchState(
                 x: touch.x, y: touch.y,
@@ -111,7 +128,11 @@ class GestureEngine {
 
                 let fingerCount = activeTouches.count
                 if fingerCount == 1 {
-                    moveCursor(dx: dx, dy: dy)
+                    if isDragging {
+                        dragCursor(dx: dx, dy: dy)
+                    } else {
+                        moveCursor(dx: dx, dy: dy)
+                    }
                 } else if fingerCount == 2 {
                     let sx = scaledDX * baseSensitivity * 0.6
                     let sy = scaledDY * baseSensitivity * 0.6
@@ -134,12 +155,22 @@ class GestureEngine {
             activeTouches.removeValue(forKey: touch.id)
         }
 
-        // Check for tap / start momentum when all fingers lifted
+        // Check for tap / drag end / momentum when all fingers lifted
         if activeTouches.isEmpty, let start = touchSequenceStart {
             let duration = Date().timeIntervalSince(start)
-            if duration < tapMaxDuration && maxDisplacement < tapMaxDisplacement {
+
+            if isDragging {
+                // End drag — release mouse button
+                let pos = currentCursorPos()
+                let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp,
+                                mouseCursorPosition: pos, mouseButton: .left)
+                up?.post(tap: .cghidEventTap)
+                isDragging = false
+                print("  → drag ended")
+            } else if duration < tapMaxDuration && maxDisplacement < tapMaxDisplacement {
                 if maxConcurrentTouches == 1 {
                     click()
+                    lastTapTime = Date() // record for double-tap drag detection
                 } else if maxConcurrentTouches == 2 {
                     rightClick()
                 }
@@ -161,6 +192,14 @@ class GestureEngine {
         let pos = currentCursorPos()
         let newPos = CGPoint(x: pos.x + dx, y: pos.y + dy)
         let event = CGEvent(mouseEventSource: nil, mouseType: .mouseMoved,
+                           mouseCursorPosition: newPos, mouseButton: .left)
+        event?.post(tap: .cghidEventTap)
+    }
+
+    func dragCursor(dx: CGFloat, dy: CGFloat) {
+        let pos = currentCursorPos()
+        let newPos = CGPoint(x: pos.x + dx, y: pos.y + dy)
+        let event = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDragged,
                            mouseCursorPosition: newPos, mouseButton: .left)
         event?.post(tap: .cghidEventTap)
     }
