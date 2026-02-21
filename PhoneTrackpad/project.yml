@@ -1,0 +1,35 @@
+name: PhoneTrackpad
+options:
+  bundleIdPrefix: com.trackpad
+  deploymentTarget:
+    iOS: "16.0"
+  xcodeVersion: "16.0"
+  generateEmptyDirectories: true
+targets:
+  PhoneTrackpad:
+    type: application
+    platform: iOS
+    sources:
+      - Sources
+    info:
+      path: Info.plist
+      properties:
+        CFBundleName: PhoneTrackpad
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIStatusBarHidden: true
+        NSLocalNetworkUsageDescription: "Connect to Mac for trackpad input"
+        NSBonjourServices:
+          - "_trackpad._tcp"
+    settings:
+      base:
+        SWIFT_VERSION: "5.9"
+        PRODUCT_BUNDLE_IDENTIFIER: com.trackpad.phone
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 53SVPQ672T
+        GENERATE_INFOPLIST_FILE: NO
